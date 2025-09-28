@@ -111,7 +111,7 @@
 		lv2:symbol "out" ;
 		lv2:name "MIDI Out"
 	] , [
-		alv2:AudioPort ,
+		a lv2:AudioPort ,
 			lv2:OutputPort ;
 		lv2:index 9 ;
 		lv2:symbol "out" ;
