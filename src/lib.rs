@@ -1,5 +1,6 @@
 use lv2::prelude::*;
 use wmidi::*;
+use std::collections::HashMap;
 
 #[derive(PortCollection)]
 pub struct Ports {
@@ -38,6 +39,18 @@ pub struct Dsfsynth {
 	gain: f32,
 	input_channel: Channel,
     urids: URIDs,
+}
+
+pub struct Tone {
+    pitch: f32,
+    time_pressed: TimeStamp,
+    time_released: Option<TimeStamp>,
+    velocity: f32,
+    phase: f32,
+}
+
+fn midi_note_to_pitch(note: wmidi::Note) -> f32 {
+    (((u8::from(note) as f32) - 69f32)/12f32).exp2() * 440f32
 }
 
 impl Plugin for Dsfsynth {
@@ -82,6 +95,7 @@ impl Plugin for Dsfsynth {
             )
             .unwrap();
 
+        let mut active_tones = HashMap::new();
         for (timestamp, atom) in input_sequence {
             // Every message is forwarded, regardless of it's content.
             output_sequence.forward(timestamp, atom);
@@ -93,14 +107,35 @@ impl Plugin for Dsfsynth {
             };
 
             match message {
-                MidiMessage::ControlChange(channel, number, value) => {
+                MidiMessage::NoteOn(channel, note, velocity) => {
 					if channel == self.input_channel {
-                        for out_frame in ports.audio_output.iter_mut() {
-                            *out_frame = 0f32;
+                        active_tones.insert(note, Tone {
+                            pitch: midi_note_to_pitch(note),
+                            time_pressed: timestamp,
+                            time_released: None,
+                            velocity: (u8::from(velocity) as f32) / 127f32,
+                            phase: 0f32,
+                        });
+                    }
+                }
+                MidiMessage::NoteOff(channel, note, _velocity) => {
+					if channel == self.input_channel {
+                        if let Some(tone) = active_tones.get_mut(&note) {
+                            tone.time_released = Some(timestamp);
                         }
                     }
                 }
                 _ => (),
+            }
+            for out_frame in ports.audio_output.iter_mut() {
+                let value = 0f32;
+                let finished_tones = vec![];
+                for (note, tone) in active_tones.iter() {
+                }
+                for note in finished_tones {
+                    active_tones.remove(note);
+                }
+                *out_frame = value;
             }
         }
     }
