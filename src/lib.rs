@@ -12,8 +12,8 @@ pub struct Ports {
     gain: InputPort<Control>,
     input_channel: InputPort<Control>,
     midi_input: InputPort<AtomPort>,
-    midi_output: OutputPort<AtomPort>,
-    audio_output: OutputPort<Audio>,
+    left_audio_output: OutputPort<Audio>,
+    right_audio_output: OutputPort<Audio>,
 }
 
 #[derive(FeatureCollection)]
@@ -144,18 +144,8 @@ impl Plugin for Dsfsynth {
             .read(self.urids.atom.sequence, self.urids.unit.beat)
             .unwrap();
 
-        let mut output_sequence = ports
-            .midi_output
-            .init(
-                self.urids.atom.sequence,
-                TimeStampURID::Frames(self.urids.unit.frame),
-            )
-            .unwrap();
-
         let mut active_tones = HashMap::new();
         for (timestamp, atom) in input_sequence {
-            // Every message is forwarded, regardless of it's content.
-            output_sequence.forward(timestamp, atom);
 
             let message = if let Some(message) = atom.read(self.urids.midi.wmidi, ()) {
                 message
@@ -184,7 +174,7 @@ impl Plugin for Dsfsynth {
                 }
                 _ => (),
             }
-            for out_frame in ports.audio_output.iter_mut() {
+            for out_frame in ports.left_audio_output.iter_mut() {
                 let mut value = 0f32;
                 let mut finished_tones = vec![];
                 for (note, tone) in active_tones.iter_mut() {
