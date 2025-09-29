@@ -17,7 +17,7 @@
 		lv2:index 0 ;
 		lv2:symbol "gain" ;
 		lv2:name "Attack" ;
-		lv2:default 64 ;
+		lv2:default 32 ;
 		lv2:minimum 0 ;
 		lv2:maximum 127 ;
 		lv2:portProperty lv2:integer;
@@ -27,7 +27,7 @@
 		lv2:index 1 ;
 		lv2:symbol "gain" ;
 		lv2:name "Decay" ;
-		lv2:default 50 ;
+		lv2:default 32 ;
 		lv2:minimum 0 ;
 		lv2:maximum 127 ;
 		lv2:portProperty lv2:integer;
@@ -37,7 +37,7 @@
 		lv2:index 2 ;
 		lv2:symbol "gain" ;
 		lv2:name "Sustain" ;
-		lv2:default 48 ;
+		lv2:default 64 ;
 		lv2:minimum 0 ;
 		lv2:maximum 127 ;
 		lv2:portProperty lv2:integer;
@@ -47,7 +47,7 @@
 		lv2:index 3 ;
 		lv2:symbol "gain" ;
 		lv2:name "Release" ;
-		lv2:default 127 ;
+		lv2:default 32 ;
 		lv2:minimum 0 ;
 		lv2:maximum 127 ;
 		lv2:portProperty lv2:integer;
@@ -57,7 +57,7 @@
 		lv2:index 4 ;
 		lv2:symbol "gain" ;
 		lv2:name "Brightness" ;
-		lv2:default 127 ;
+		lv2:default 64 ;
 		lv2:minimum 0 ;
 		lv2:maximum 127 ;
 		lv2:portProperty lv2:integer;
