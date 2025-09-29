@@ -10,6 +10,7 @@ pub struct Ports {
     release: InputPort<Control>,
     brightness: InputPort<Control>,
     gain: InputPort<Control>,
+    base_note: InputPort<Control>,
     input_channel: InputPort<Control>,
     midi_input: InputPort<AtomPort>,
     left_audio_output: OutputPort<Audio>,
@@ -50,15 +51,12 @@ pub struct Dsfsynth {
     adsr: Adsr,
     brightness: f32,
     gain: f32,
+    base_note: u8,
     input_channel: Channel,
     urids: URIDs,
     samplerate: f32,
     active_tones: HashMap<u8, Tone>,
     current_frame: u32,
-}
-
-fn midi_note_to_pitch(note: wmidi::Note) -> f32 {
-    (((u8::from(note) as f32) - 69f32) / 12f32).exp2() * 440f32
 }
 
 fn dsf_inf(w: f32, u: f32, v: f32) -> f32 {
@@ -116,8 +114,18 @@ fn envelope(tone: &Tone, frame_index: u32, adsr: &Adsr, samplerate: f32) -> Opti
     }
 }
 
+fn shepard_tone(brightness: f32, phase: f32, base_note: u8, note: u8) -> f32 {
+    let index = (note-base_note).rem_euclid(12u8);
+    let t = index as f32 / 12f32;
+
+    brightness.powf(t) * dsf_inf(brightness.powf(1f32 + t), phase, phase)
+    + (t.exp2() - 1f32) * dsf_inf(brightness * brightness, phase / 2f32, phase)
+}
+
 impl Dsfsynth {
-    fn phase_increment_from_pitch(&self, pitch: f32) -> f32 {
+    fn midi_note_to_phase_increment(&self, note: wmidi::Note) -> f32 {
+        let index = self.base_note as i32 + ((u8::from(note) as i32) - (self.base_note as i32)).rem_euclid(12i32);
+        let pitch = ((index as f32 - 69f32) / 12f32).exp2() * 440f32;
         std::f32::consts::TAU * pitch / self.samplerate
     }
 }
@@ -138,6 +146,7 @@ impl Plugin for Dsfsynth {
             },
             brightness: 64f32 / 127f32,
             gain: -20f32,
+            base_note: 69u8,
             input_channel: Channel::Ch1,
             urids: features.map.populate_collection()?,
             samplerate: plugin_info.sample_rate() as f32,
@@ -155,6 +164,7 @@ impl Plugin for Dsfsynth {
         );
         self.brightness = midi_val_to_ratio(*(ports.brightness));
         self.gain = *(ports.gain);
+        self.base_note = *(ports.base_note) as u8;
         self.input_channel =
             wmidi::Channel::from_index(*(ports.input_channel) as u8 - 1u8).unwrap();
 
@@ -176,8 +186,7 @@ impl Plugin for Dsfsynth {
                         self.active_tones.insert(
                             u8::from(note),
                             Tone {
-                                phase_increment: self
-                                    .phase_increment_from_pitch(midi_note_to_pitch(note)),
+                                phase_increment: self.midi_note_to_phase_increment(note),
                                 time_pressed: self.current_frame,
                                 time_released: None,
                                 velocity: midi_val_to_ratio(u8::from(velocity) as f32),
@@ -206,7 +215,7 @@ impl Plugin for Dsfsynth {
             let mut finished_tones = vec![];
             for (note, tone) in self.active_tones.iter_mut() {
                 if let Some(envelope) = envelope(tone, frame_index, &self.adsr, self.samplerate) {
-                    value += dsf_inf(self.brightness, tone.phase,tone.phase) * envelope * decibel(self.gain) * tone.velocity;
+                    value += shepard_tone(self.brightness, tone.phase, self.base_note, *note) * envelope * decibel(self.gain) * tone.velocity;
                     tone.phase =
                         (tone.phase + tone.phase_increment).rem_euclid(std::f32::consts::TAU);
                 } else {
