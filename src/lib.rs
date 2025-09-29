@@ -82,8 +82,8 @@ fn midi_vals_to_adsr(attack: f32, decay: f32, sustain: f32, release: f32) -> Ads
     }
 }
 
-fn gain(val: f32) -> f32 {
-    10.0_f32.powf(val * 0.05)
+fn decibel(val: f32) -> f32 {
+    10f32.powf(val * 0.05)
 }
 
 fn ads(adsr: &Adsr, time: f32) -> f32 {
@@ -206,7 +206,7 @@ impl Plugin for Dsfsynth {
             let mut finished_tones = vec![];
             for (note, tone) in self.active_tones.iter_mut() {
                 if let Some(envelope) = envelope(tone, frame_index, &self.adsr, self.samplerate) {
-                    value += tone.phase.sin() * envelope * gain(self.gain) * tone.velocity;
+                    value += dsf_inf(self.brightness, tone.phase,tone.phase) * envelope * decibel(self.gain) * tone.velocity;
                     tone.phase =
                         (tone.phase + tone.phase_increment).rem_euclid(std::f32::consts::TAU);
                 } else {
