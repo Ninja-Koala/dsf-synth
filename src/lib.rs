@@ -137,7 +137,7 @@ impl Plugin for Dsfsynth {
                 release: -6f32.exp(),
             },
             brightness: 64f32 / 127f32,
-            gain: 0f32,
+            gain: -20f32,
             input_channel: Channel::Ch1,
             urids: features.map.populate_collection()?,
             samplerate: plugin_info.sample_rate() as f32,
