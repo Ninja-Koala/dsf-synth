@@ -36,6 +36,7 @@ pub struct Tone {
     time_released: Option<u32>,
     velocity: f32,
     phase: f32,
+    n: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -59,8 +60,12 @@ pub struct Dsfsynth {
     current_frame: u32,
 }
 
-fn dsf_inf(w: f32, u: f32, v: f32) -> f32 {
+fn _dsf_inf(w: f32, u: f32, v: f32) -> f32 {
     (u.sin() - w * (u - v).sin()) / (1f32 + w * w - 2f32 * w * v.cos())
+}
+
+fn dsf_n(w: f32, u: f32, v: f32, n: f32) -> f32 {
+    (u.sin() - w * (u - v).sin() - w.powf(n+1f32)*((u+(n+1f32)*v).sin()-w*(u+n*v).sin())) / (1f32 + w * w - 2f32 * w * v.cos())
 }
 
 fn midi_val_to_time(val: f32) -> f32 {
@@ -114,11 +119,11 @@ fn envelope(tone: &Tone, frame_index: u32, adsr: &Adsr, samplerate: f32) -> Opti
     }
 }
 
-fn shepard_tone(brightness: f32, phase: f32, base_note: u8, note: u8) -> f32 {
+fn shepard_tone(brightness: f32, phase: f32, base_note: u8, note: u8, n: f32) -> f32 {
     let t = (note as f32 - base_note as f32).rem_euclid(12f32) / 12f32;
 
-    brightness.powf(t) * dsf_inf(brightness.powf(1f32 + t), phase, phase)
-    + (t.exp2() - 1f32) * dsf_inf(brightness * brightness, phase / 2f32, phase)
+    brightness.powf(t) * dsf_n(brightness.powf(1f32 + t), phase, phase, n)
+    + (t.exp2() - 1f32) * dsf_n(brightness * brightness, phase / 2f32, phase, n)
 }
 
 impl Dsfsynth {
@@ -190,6 +195,7 @@ impl Plugin for Dsfsynth {
                                 time_released: None,
                                 velocity: midi_val_to_ratio(u8::from(velocity) as f32),
                                 phase: 0f32,
+                                n: (std::f32::consts::PI / self.midi_note_to_phase_increment(note)).floor(),
                             },
                         );
                         //println!("increment: {}", self.midi_note_to_phase_increment(note));
@@ -221,7 +227,7 @@ impl Plugin for Dsfsynth {
             let mut finished_tones = vec![];
             for (note, tone) in self.active_tones.iter_mut() {
                 if let Some(envelope) = envelope(tone, frame_index, &self.adsr, self.samplerate) {
-                    let sample = shepard_tone(self.brightness, tone.phase, self.base_note, *note);
+                    let sample = shepard_tone(self.brightness, tone.phase, self.base_note, *note, tone.n);
                     value.0 += sample * envelope * decibel(self.gain) * tone.velocity;
                     value.1 += sample * envelope * decibel(self.gain) * tone.velocity;
                     tone.phase += tone.phase_increment; // Don't modulo! I need subtones
