@@ -114,11 +114,11 @@ fn envelope(tone: &Tone, frame_index: u32, adsr: &Adsr, samplerate: f32) -> Opti
     }
 }
 
-fn shepard_tone(brightness: f32, phase: f32, base_note: u8, note: u8) -> (f32, f32) {
+fn shepard_tone(brightness: f32, phase: f32, base_note: u8, note: u8) -> f32 {
     let t = (note as f32 - base_note as f32).rem_euclid(12f32) / 12f32;
 
-    (brightness.powf(t) * dsf_inf(brightness.powf(1f32 + t), phase, phase)
-    , (t.exp2() - 1f32) * dsf_inf(brightness * brightness, phase / 2f32, phase))
+    brightness.powf(t) * dsf_inf(brightness.powf(1f32 + t), phase, phase)
+    + (t.exp2() - 1f32) * dsf_inf(brightness * brightness, phase / 2f32, phase)
 }
 
 impl Dsfsynth {
@@ -192,18 +192,13 @@ impl Plugin for Dsfsynth {
                                 phase: 0f32,
                             },
                         );
-                        println!("increment: {}", self.midi_note_to_phase_increment(note));
-                        println!("velocity: {}", midi_val_to_ratio(u8::from(velocity) as f32));
-                        println!("samplerate: {}", self.samplerate);
-                        println!("gain: {}", decibel(self.gain));
-                        println!("brightness: {}", self.brightness);
-                        println!("note: {}", u8::from(note));
-                        println!("base_note: {}", self.base_note);
-
-                        let index = (u8::from(note) as f32 - self.base_note as f32).rem_euclid(12f32);
-                        let t = index / 12f32;
-
-                        println!("factor: {}", (t.exp2() - 1f32));
+                        //println!("increment: {}", self.midi_note_to_phase_increment(note));
+                        //println!("velocity: {}", midi_val_to_ratio(u8::from(velocity) as f32));
+                        //println!("samplerate: {}", self.samplerate);
+                        //println!("gain: {}", decibel(self.gain));
+                        //println!("brightness: {}", self.brightness);
+                        //println!("note: {}", u8::from(note));
+                        //println!("base_note: {}", self.base_note);
                     }
                 }
                 MidiMessage::NoteOff(channel, note, _velocity) => {
@@ -227,10 +222,9 @@ impl Plugin for Dsfsynth {
             for (note, tone) in self.active_tones.iter_mut() {
                 if let Some(envelope) = envelope(tone, frame_index, &self.adsr, self.samplerate) {
                     let sample = shepard_tone(self.brightness, tone.phase, self.base_note, *note);
-                    value.0 += sample.0 * envelope * decibel(self.gain) * tone.velocity;
-                    value.1 += sample.1 * envelope * decibel(self.gain) * tone.velocity;
-                    tone.phase =
-                        (tone.phase + tone.phase_increment).rem_euclid(std::f32::consts::TAU);
+                    value.0 += sample * envelope * decibel(self.gain) * tone.velocity;
+                    value.1 += sample * envelope * decibel(self.gain) * tone.velocity;
+                    tone.phase += tone.phase_increment; // Don't modulo! I need subtones
                 } else {
                     finished_tones.push(note.clone());
                 }
