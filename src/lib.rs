@@ -11,6 +11,7 @@ pub struct Ports {
     gain: InputPort<Control>,
     brightness: InputPort<Control>,
     base_note: InputPort<Control>,
+    num_octaves: InputPort<Control>,
     input_channel: InputPort<Control>,
     midi_input: InputPort<AtomPort>,
     left_audio_output: OutputPort<Audio>,
@@ -53,6 +54,7 @@ pub struct Dsfsynth {
     gain: f32,
     brightness: f32,
     base_note: u8,
+    num_octaves: u8,
     input_channel: Channel,
     urids: URIDs,
     samplerate: f32,
@@ -119,16 +121,21 @@ fn envelope(tone: &Tone, frame_index: u32, adsr: &Adsr, samplerate: f32) -> Opti
     }
 }
 
-fn shepard_tone(brightness: f32, phase: f32, base_note: u8, note: u8, n: f32) -> f32 {
-    let t = (note as f32 - base_note as f32).rem_euclid(12f32) / 12f32;
+fn shepard_tone(brightness: f32, phase: f32, base_note: u8, num_octaves: f32, note: u8, n: f32) -> f32 {
+    let t = (note as f32 - base_note as f32).rem_euclid(12f32 * num_octaves) / (12f32 * num_octaves);
 
-    brightness.powf(t) * dsf_n(brightness.powf(1f32 + t), phase, phase, n)
-    + (t.exp2() - 1f32) * dsf_n(brightness * brightness, phase / 2f32, phase, n)
+    let pitch_diff = num_octaves.exp2() - 1f32;
+    let mut value = brightness.powf(t * pitch_diff) * dsf_n(brightness.powf(1f32 + pitch_diff * t), phase, phase, n);
+    for i in 1..(num_octaves.exp2().floor() as i32) {
+        value += (t.exp2() - 1f32) * dsf_n(brightness.powf(num_octaves.exp2()), phase * ((i as f32) / num_octaves.exp2()), phase, n)
+    }
+
+    return value;
 }
 
 impl Dsfsynth {
-    fn midi_note_to_phase_increment(&self, note: wmidi::Note) -> f32 {
-        let index = self.base_note as i32 + ((u8::from(note) as i32) - (self.base_note as i32)).rem_euclid(12i32);
+    fn midi_note_to_phase_increment(&self, note: wmidi::Note, num_octaves: u8) -> f32 {
+        let index = self.base_note as i32 + ((u8::from(note) as i32) - (self.base_note as i32)).rem_euclid(12i32 * num_octaves as i32);
         let pitch = ((index as f32 - 69f32) / 12f32).exp2() * 440f32;
         std::f32::consts::TAU * pitch / self.samplerate
     }
@@ -151,6 +158,7 @@ impl Plugin for Dsfsynth {
             gain: -20f32,
             brightness: 64f32 / 127f32,
             base_note: 69u8,
+            num_octaves: 1u8,
             input_channel: Channel::Ch1,
             urids: features.map.populate_collection()?,
             samplerate: plugin_info.sample_rate() as f32,
@@ -169,6 +177,7 @@ impl Plugin for Dsfsynth {
         self.gain = *(ports.gain);
         self.brightness = midi_val_to_ratio(*(ports.brightness));
         self.base_note = *(ports.base_note) as u8;
+        self.num_octaves = *(ports.num_octaves) as u8;
         self.input_channel =
             wmidi::Channel::from_index(*(ports.input_channel) as u8 - 1u8).unwrap();
 
@@ -190,12 +199,12 @@ impl Plugin for Dsfsynth {
                         self.active_tones.insert(
                             u8::from(note),
                             Tone {
-                                phase_increment: self.midi_note_to_phase_increment(note),
+                                phase_increment: self.midi_note_to_phase_increment(note, self.num_octaves),
                                 time_pressed: self.current_frame,
                                 time_released: None,
                                 velocity: midi_val_to_ratio(u8::from(velocity) as f32),
                                 phase: 0f32,
-                                n: (std::f32::consts::PI / self.midi_note_to_phase_increment(note)).floor(),
+                                n: (std::f32::consts::PI / self.midi_note_to_phase_increment(note, self.num_octaves)).floor(),
                             },
                         );
                         //println!("increment: {}", self.midi_note_to_phase_increment(note));
@@ -227,7 +236,7 @@ impl Plugin for Dsfsynth {
             let mut finished_tones = vec![];
             for (note, tone) in self.active_tones.iter_mut() {
                 if let Some(envelope) = envelope(tone, frame_index, &self.adsr, self.samplerate) {
-                    let sample = shepard_tone(self.brightness, tone.phase, self.base_note, *note, tone.n);
+                    let sample = shepard_tone(self.brightness, tone.phase, self.base_note, self.num_octaves as f32, *note, tone.n);
                     value.0 += sample * envelope * decibel(self.gain) * tone.velocity;
                     value.1 += sample * envelope * decibel(self.gain) * tone.velocity;
                     tone.phase += tone.phase_increment; // Don't modulo! I need subtones
